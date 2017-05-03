@@ -6,7 +6,81 @@ Program 5
 Question 1:
 
 a)
-12 DNS lookups were performed by the client.
-2 of those lookups were redundant (www.code.org and code.org). (LOOK AT - is www.code.org and code.org the same domain name?)
+According to WebPagetest,
+12 DNS lookups were performed by the client (two for code.org and www.code.org, other 10 for other misc. domains).
+0 of these lookups were redundant, since no two lookups share the exact same domain name.
 
 b)
+Queries issued by local DNS server for first lookup:
+Assuming we are trying to load "www.code.org", the local DNS server queried:
+- root server with "www.code.org", got "org" name server	(Query 1 below)
+- org server with "www.code.org", got "code.org" name server	(Query 2 below)
+- code.org server with "www.code.org", got "www.code.org"	(Query 3 below)
+
+
+Query 1) 
+Name Server Queried:
+a.root-servers.net
+
+Records Returned:
+;; QUESTION SECTION:
+;www.code.org.			IN	A
+
+;; AUTHORITY SECTION:
+org.			172800	IN	NS	a0.org.afilias-nst.info.
+org.			172800	IN	NS	a2.org.afilias-nst.info.
+org.			172800	IN	NS	b0.org.afilias-nst.org.
+org.			172800	IN	NS	b2.org.afilias-nst.org.
+org.			172800	IN	NS	c0.org.afilias-nst.info.
+org.			172800	IN	NS	d0.org.afilias-nst.org.
+
+;; ADDITIONAL SECTION:
+a0.org.afilias-nst.info. 172800	IN	A	199.19.56.1
+a2.org.afilias-nst.info. 172800	IN	A	199.249.112.1
+b0.org.afilias-nst.org.	172800	IN	A	199.19.54.1
+b2.org.afilias-nst.org.	172800	IN	A	199.249.120.1
+c0.org.afilias-nst.info. 172800	IN	A	199.19.53.1
+d0.org.afilias-nst.org.	172800	IN	A	199.19.57.1
+a0.org.afilias-nst.info. 172800	IN	AAAA	2001:500:e::1
+a2.org.afilias-nst.info. 172800	IN	AAAA	2001:500:40::1
+b0.org.afilias-nst.org.	172800	IN	AAAA	2001:500:c::1
+b2.org.afilias-nst.org.	172800	IN	AAAA	2001:500:48::1
+c0.org.afilias-nst.info. 172800	IN	AAAA	2001:500:b::1
+d0.org.afilias-nst.org.	172800	IN	AAAA	2001:500:f::1
+
+
+Query 2)
+Name Server Queried:
+a0.org.afilias-nst.info
+
+Records Returned:
+;; QUESTION SECTION:
+;www.code.org.			IN	A
+
+;; AUTHORITY SECTION:
+code.org.		86400	IN	NS	ns-269.awsdns-33.com.
+code.org.		86400	IN	NS	ns-678.awsdns-20.net.
+code.org.		86400	IN	NS	ns-1497.awsdns-59.org.
+code.org.		86400	IN	NS	ns-1652.awsdns-14.co.uk.
+
+;; ADDITIONAL SECTION:
+ns-1497.awsdns-59.org.	86400	IN	A	205.251.197.217
+
+
+Query 3)
+Name Server Queried:
+ns-1497.awsdns-59.org
+
+Records Returned:
+;; QUESTION SECTION:
+;www.code.org.			IN	A
+
+;; ANSWER SECTION:
+www.code.org.		60	IN	A	52.202.213.182
+www.code.org.		60	IN	A	54.174.151.211
+
+;; AUTHORITY SECTION:
+code.org.		172800	IN	NS	ns-1497.awsdns-59.org.
+code.org.		172800	IN	NS	ns-1652.awsdns-14.co.uk.
+code.org.		172800	IN	NS	ns-269.awsdns-33.com.
+code.org.		172800	IN	NS	ns-678.awsdns-20.net.
