@@ -4,8 +4,6 @@ import java.io.File;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-import edu.wisc.cs.sdn.simpledns.packet.DNS;
-
 public class SimpleDNS 
 {
 	public static void main(String[] args) throws Exception
@@ -14,7 +12,6 @@ public class SimpleDNS
 	    File ec2_csv = null;
 	    
 	    // parse command line arguments //
-	    
 	    for (int i = 0; i < args.length; i++)
 	    {
 	        switch (args[i])
@@ -47,16 +44,14 @@ public class SimpleDNS
 	    
 	    // parse failure //
 	    if (root_dns_ip == null || ec2_csv == null || !ec2_csv.exists())
-	        return;
+            return;
+	    
+	    System.out.println("SimpleDNS server started.");
 	    
 	    // run state machine //
 	    try (DNSServer server = new DNSServer(root_dns_ip, ec2_csv))
 	    {
-	        while (true)
-	        {
-	            DNS pkt = server.getQueryFromClient();
-	            server.processQuery(pkt);
-	        }
+            server.run();
 	    }
 	}
 }
