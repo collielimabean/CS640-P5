@@ -1,0 +1,12 @@
+Matt Henricks, William Jen
+CS 640
+Program 5
+5/4/17
+
+Question 1:
+
+a)
+12 DNS lookups were performed by the client.
+2 of those lookups were redundant (www.code.org and code.org). (LOOK AT - is www.code.org and code.org the same domain name?)
+
+b)
