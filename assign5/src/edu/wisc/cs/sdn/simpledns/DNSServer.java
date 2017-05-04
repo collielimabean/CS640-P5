@@ -204,17 +204,7 @@ public class DNSServer implements AutoCloseable, Runnable
                 // if original query was NS, then done!
                 if (question.getType() == DNS.TYPE_NS)
                 {
-                    DNS clientResponse = new DNS();
-                    clientResponse.setOpcode(DNS.OPCODE_STANDARD_QUERY);
-                    clientResponse.setQuery(false);
-                    clientResponse.setRcode(DNS.RCODE_NO_ERROR);
-                    clientResponse.setAuthorities(rootResponse.getAuthorities());
-                    clientResponse.setRecursionAvailable(true);
-                    clientResponse.setRecursionDesired(true);
-                    clientResponse.setAuthoritative(false);
-                    clientResponse.setAuthenicated(false);
-                    clientResponse.setCheckingDisabled(false);
-                    clientResponse.setTruncated(false);
+                    DNS clientResponse = this.createDNSReply();
                     
                     System.out.println("Handled client DNS NS query");
                     
@@ -251,13 +241,15 @@ public class DNSServer implements AutoCloseable, Runnable
                 // back to listening //
             }
             else
-            {
+            { 
+                System.out.println("Answers detected");
                 // check if we are done //
                 DNSResourceRecord rootAnswer = rootResponse.getAnswers().get(0);
 
                 // if CNAME, continue resolution //
                 if (rootAnswer.getType() == DNS.TYPE_CNAME)
                 {
+                    System.out.println("CNAME detected " + rootAnswer);
                     // save this record, we'll need it when resolution is complete //
                     cnameList.add(rootAnswer);
                     
@@ -297,9 +289,10 @@ public class DNSServer implements AutoCloseable, Runnable
                             DNSRdataAddress answerData = (DNSRdataAddress) answer.getData();
                             
                             // match found, add TXT record //
-                            if (s.isMatch(answerData.getAddress().toString()))
+                            if (s.isMatch(answerData.getAddress().toString().replace("/", "")))
                             {
                                 DNSResourceRecord txtRecord = new DNSResourceRecord();
+                                txtRecord.setType(DNS.TYPE_TXT);
                                 txtRecord.setName(answer.getName());
                                 txtRecord.setTtl(DEFAULT_TTL);
                                 
@@ -325,6 +318,7 @@ public class DNSServer implements AutoCloseable, Runnable
                     clientResponse.setAdditional(addlList);
                 
                 // set answers & questions //
+                clientResponse.setId(query.getId());
                 clientResponse.setAnswers(responseAnswers);
                 clientResponse.setQuestions(query.getQuestions());
                 
