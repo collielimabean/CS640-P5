@@ -96,5 +96,20 @@ first lookup, it will simply return the IP address of "www.code.org" to the clie
 ---------------------------------
 
 Question 2:
+Data from WebPagetest, according to Piazza: https://piazza.com/class/ixxtdlutrc677k?cid=442
 
 a)
+Resolve to EC2:
+To find if a domain name resolves to EC2, we search for a portion of the request's IP in the EC2 list of IPs. If we find a
+possible IP match, we then do a CIDR lookup using the specified prefix to see if the domain's IP is within the IP range
+found via CIDR.
+
+Domain 1) 
+www.code.org
+The IP of www.code.org is 50.17.209.250. There exists an EC2 node with IP 50.16.0.0/15, which translates using CIDR to the
+IP range 50.16.0.0 - 50.17.255.255. 50.17.209.250 lies within this range, so www.code.org resolves to an Amazon EC2 node.
+	
+
+
+b)
+
