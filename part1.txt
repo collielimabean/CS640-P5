@@ -112,4 +112,13 @@ IP range 50.16.0.0 - 50.17.255.255. 50.17.209.250 lies within this range, so www
 
 
 b)
+Resolve to Akamai or EdgeCast CDN:
+To find if a domain name resolves to Akamai/EdgeCast CDN, for each unique IP on WebPagetest, we use bgp.he.net to find the
+IP info for each IP. Then, using this info and the DNS info provided, we look for those IP which belong to Akamai/EdgeCast.
+
+Domain 1)
+https://cdn.optimizely.com/js/400912536.js
+The IP of this domain is 23.203.150.187. When accessing bgp.he.net, we find that it belongs to Akamia Technologies, Inc.
+and resolves to the url a23-203-150-187.deploy.static.akamaitechnologies.com. Therefore, the domain 
+https://cdn.optimizely.com/js/400912536.js resolves to Akamai or EdgeCast CDN.
 
