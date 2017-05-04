@@ -154,6 +154,7 @@ public class DNSServer implements AutoCloseable, Runnable
         
         // required state variables //
         boolean done = false;
+        DNS lastQueryPkt = query;
         List<DNSResourceRecord> cnameList = new ArrayList<DNSResourceRecord>();
         List<DNSResourceRecord> authList = new ArrayList<DNSResourceRecord>();
         List<DNSResourceRecord> addlList = new ArrayList<DNSResourceRecord>();
@@ -222,14 +223,15 @@ public class DNSServer implements AutoCloseable, Runnable
                     boolean found = false;
                     DNSRdataName nsName = (DNSRdataName) authRecord.getData();
                     
-                    for (DNSResourceRecord addlRecord: rootResponse.getAdditional())
+                    for (DNSResourceRecord addlRecord : rootResponse.getAdditional())
                     {
                         if (addlRecord.getType() == DNS.TYPE_A && nsName.getName().equals(addlRecord.getName()))
                         {
                             // forward query to this new nameserver //
                             InetAddress nextAddr = ((DNSRdataAddress)addlRecord.getData()).getAddress();
                             System.out.println("Querying new NS: " + nextAddr.toString());
-                            this.sendDNSPkt(query, nextAddr, DNS_PORT);
+                            System.out.println("LastQueryPkt: " + lastQueryPkt);
+                            this.sendDNSPkt(lastQueryPkt, nextAddr, DNS_PORT);
                             found = true;
                             break;
                         }
@@ -266,6 +268,7 @@ public class DNSServer implements AutoCloseable, Runnable
                     // add question to query //
                     nextQuery.addQuestion(nextQuestion);
                     
+                    lastQueryPkt = nextQuery;
                     // send it out //
                     this.sendDNSPkt(nextQuery, rootDNS, DNS_PORT);
                     continue;
