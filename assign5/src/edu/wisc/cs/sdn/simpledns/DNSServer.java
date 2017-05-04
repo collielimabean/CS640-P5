@@ -8,27 +8,55 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
-import java.util.HashMap;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 import edu.wisc.cs.sdn.simpledns.packet.DNS;
 import edu.wisc.cs.sdn.simpledns.packet.DNSQuestion;
 import edu.wisc.cs.sdn.simpledns.packet.DNSRdataAddress;
+import edu.wisc.cs.sdn.simpledns.packet.DNSRdataName;
 import edu.wisc.cs.sdn.simpledns.packet.DNSRdataString;
 import edu.wisc.cs.sdn.simpledns.packet.DNSResourceRecord;
 
 public class DNSServer implements AutoCloseable, Runnable
 {
+    private class Subnet
+    {
+        String ec2_text;
+        String readable_subnet;
+        int subnet;
+        int prefix;
+
+        public Subnet(String ec2_text, String cidr) throws UnknownHostException
+        {
+            String[] split = cidr.split("/");
+            byte[] ip_bytes = InetAddress.getByName(split[0]).getAddress();
+            this.readable_subnet = split[0];
+            this.subnet = (ip_bytes[0] << 24) | (ip_bytes[1] << 16) | (ip_bytes[2] << 8) | ip_bytes[3];
+            this.prefix = Integer.parseInt(split[1]);
+            this.ec2_text = ec2_text;
+        }
+
+        public boolean isMatch(String ip) throws UnknownHostException
+        {
+            byte[] ip_bytes = InetAddress.getByName(ip).getAddress();
+            int conv_ip = (ip_bytes[0] << 24) | (ip_bytes[1] << 16) | (ip_bytes[2] << 8) | ip_bytes[3];
+            int mask = (~0) << (32 - this.prefix);
+            return (subnet & mask) == (conv_ip & mask);
+        }
+    }
+    
+    private static final int DEFAULT_TTL = 3600; // 1 hr
     private static final int DNS_SERVER_PORT = 8053;
     private static final int DNS_PORT = 53;
     private DatagramSocket socket;
     private InetAddress rootDNS;
-    private Map<String, String> ec2Map;
+    private List<Subnet> ec2List; // ip to subnet
     
     public DNSServer(InetAddress root, File ec2) throws SocketException, IOException
     {
-        ec2Map = new HashMap<String, String>();
+        ec2List = new ArrayList<Subnet>();
         socket = new DatagramSocket(DNS_SERVER_PORT);
         rootDNS = root;
         
@@ -41,8 +69,7 @@ public class DNSServer implements AutoCloseable, Runnable
             if (items.length != 2)
                 continue;
             
-            String ip = items[0].substring(0, items[0].indexOf('/'));
-            ec2Map.put(ip, items[1]);
+            ec2List.add(new Subnet(items[1], items[0]));
         }
         
         br.close();
@@ -117,47 +144,63 @@ public class DNSServer implements AutoCloseable, Runnable
         socket.send(p);
     }
     
-    /* 
-     * Implementation for handling multiple questions is not required
-     * For cases where you get Authority Sections without Additional sections. 
-     * You should recursively fetch the IP for the name server in the Authority Section. 
-     * Once you get one of the name servers IP in this authority list, you can continue with the name resolution of the orignial query.
-     */
-    
     private DNS handleRecursive(DNS query) throws IOException
     {
         // DNSQuestion in question //
         DNSQuestion question = query.getQuestions().get(0);
         
         // send query to root //
-        DNS dns = new DNS();
-        dns.setOpcode(DNS.OPCODE_STANDARD_QUERY);
-        //dns.setId(query.getId());
-        dns.setQuery(true);
-        dns.setTruncated(true);
-        dns.setAuthenicated(false);
-        dns.setRecursionDesired(true);
-        dns.addQuestion(question); // only handle first question
-        this.sendDNSPkt(dns, rootDNS, DNS_PORT);
+        this.sendDNSPkt(query, rootDNS, DNS_PORT);
         
         // required state variables //
         boolean done = false;
-        DNSQuestion cnameQuestion = null;
-        DNSResourceRecord cnameRecord = null;
+        List<DNSResourceRecord> cnameList = new ArrayList<DNSResourceRecord>();
+        List<DNSResourceRecord> authList = new ArrayList<DNSResourceRecord>();
+        List<DNSResourceRecord> addlList = new ArrayList<DNSResourceRecord>();
         
         while (!done)
         {
-            // parse root response //
+            // receive data //
             byte[] recv = new byte[1024];
             DatagramPacket recvPkt = new DatagramPacket(recv, recv.length);
             socket.receive(recvPkt);
+            
+            // parse packet //
             DNS rootResponse = DNS.deserialize(recvPkt.getData(), recvPkt.getLength());
             System.out.println("Root returned: " + rootResponse);
             
+            // parsed packet variables //
             List<DNSResourceRecord> rootAnswers = rootResponse.getAnswers();
+            List<DNSResourceRecord> rootAuthorities = rootResponse.getAuthorities();
+            List<DNSResourceRecord> rootAdditional = rootResponse.getAdditional();
+            
+            // check if authorities section is not SOA (start of authority) //
+            
+            boolean is_soa = true;
+            for (DNSResourceRecord dr : rootAuthorities)
+            {
+                switch (dr.getType())
+                {
+                    case DNS.TYPE_A:
+                    case DNS.TYPE_AAAA:
+                    case DNS.TYPE_NS:
+                    case DNS.TYPE_CNAME:
+                        is_soa = false;
+                        break;
+                }
+            }
+            
+            // this is a non empty auth list, save it //
+            if (!is_soa)
+                authList = rootAuthorities;
+            
+            if (!rootAdditional.isEmpty())
+                addlList = rootAdditional;
+            
             if (rootAnswers.isEmpty())
             {
                 System.out.println("RootAnswers is empty!");
+                
                 // if original query was NS, then done!
                 if (question.getType() == DNS.TYPE_NS)
                 {
@@ -181,19 +224,22 @@ public class DNSServer implements AutoCloseable, Runnable
                 }
                 
                 // not NS - look for other name servers to query //
-                for (DNSResourceRecord auth : rootResponse.getAuthorities())
+                for (DNSResourceRecord authRecord : rootAuthorities)
                 {
+                    if (authRecord.getType() != DNS.TYPE_NS)
+                        continue;
+                    
                     boolean found = false;
-                    for (DNSResourceRecord addl : rootResponse.getAdditional())
+                    DNSRdataName nsName = (DNSRdataName) authRecord.getData();
+                    
+                    for (DNSResourceRecord addlRecord: rootResponse.getAdditional())
                     {
-                        if ((addl.getType() == DNS.TYPE_A || addl.getType() == DNS.TYPE_AAAA)
-                            && (auth.getType() == DNS.TYPE_NS))
+                        if (addlRecord.getType() == DNS.TYPE_A && nsName.getName().equals(addlRecord.getName()))
                         {
                             // forward query to this new nameserver //
-                            InetAddress nextAddr = ((DNSRdataAddress)addl.getData()).getAddress();
+                            InetAddress nextAddr = ((DNSRdataAddress)addlRecord.getData()).getAddress();
                             System.out.println("Querying new NS: " + nextAddr.toString());
-                            this.sendDNSPkt(dns, nextAddr, DNS_PORT);
-                            
+                            this.sendDNSPkt(query, nextAddr, DNS_PORT);
                             found = true;
                             break;
                         }
@@ -208,77 +254,79 @@ public class DNSServer implements AutoCloseable, Runnable
             {
                 // check if we are done //
                 DNSResourceRecord rootAnswer = rootResponse.getAnswers().get(0);
-                DNSQuestion rootQuestion = rootResponse.getQuestions().get(0);
 
                 // if CNAME, continue resolution //
                 if (rootAnswer.getType() == DNS.TYPE_CNAME)
                 {
                     // save this record, we'll need it when resolution is complete //
-                    cnameRecord = rootAnswer;
-                    cnameQuestion = rootQuestion;
+                    cnameList.add(rootAnswer);
                     
-                    DNS nextQuery = new DNS();
+                    // prepare query //
+                    DNS nextQuery = this.createDNSRequest();
                     nextQuery.setId(query.getId());
-                    nextQuery.setOpcode(DNS.OPCODE_STANDARD_QUERY);
-                    nextQuery.setQuery(true);
-                    nextQuery.setTruncated(true);
-                    nextQuery.setAuthenicated(false);
-                    nextQuery.setRecursionDesired(true);
                     
-                    // create question with last answer data
-                    DNSQuestion nextQuestion = new DNSQuestion(rootAnswer.getName(), rootQuestion.getType());
-                    nextQuery.addQuestion(nextQuestion); 
+                    // create question with last answer data //
+                    DNSQuestion nextQuestion = new DNSQuestion();
+                    DNSRdataName dnsRdataname = (DNSRdataName) rootAnswer.getData();
+                    nextQuestion.setName(dnsRdataname.getName());
+                    nextQuestion.setType(question.getType());
                     
+                    // add question to query //
+                    nextQuery.addQuestion(nextQuestion);
+                    
+                    // send it out //
                     this.sendDNSPkt(nextQuery, rootDNS, DNS_PORT);
                     continue;
                 }
 
                 // we are done, prepare to echo back to client //
-                DNS clientResponse = new DNS();
-                clientResponse.setOpcode(DNS.OPCODE_STANDARD_QUERY);
-                clientResponse.setQuery(false);
-                clientResponse.setRcode(DNS.RCODE_NO_ERROR);
-                clientResponse.setAuthorities(rootResponse.getAuthorities());
-                clientResponse.setRecursionAvailable(true);
-                clientResponse.setRecursionDesired(true);
-                clientResponse.setAuthoritative(false);
-                clientResponse.setAuthenicated(false);
-                clientResponse.setCheckingDisabled(false);
-                clientResponse.setTruncated(false);
+                DNS clientResponse = this.createDNSReply();
                 
-                clientResponse.addQuestion(rootQuestion);
-                clientResponse.addQuestion(cnameQuestion);
-                clientResponse.addAnswer(rootAnswer);
-                clientResponse.addAnswer(cnameRecord);
+                List<DNSResourceRecord> responseAnswers = new ArrayList<DNSResourceRecord>(rootAnswers);
                 
-                // type A needs the ec2 stuff //
-                if (rootQuestion.getType() == DNS.TYPE_A)
+                // add any necessary TXT records //
+                if (question.getType() == DNS.TYPE_A)
                 {
-                    for (Map.Entry<String, String> pair : this.ec2Map.entrySet())
+                    for (DNSResourceRecord answer : rootAnswers)
                     {
-                        String map_ip = pair.getKey();
-                        String map_region = pair.getValue();
-                        for (DNSResourceRecord record : rootResponse.getAnswers())
+                        if (answer.getType() != DNS.TYPE_A)
+                            continue;
+                        
+                        for (Subnet s : this.ec2List)
                         {
-                            String record_ip = record.getData().toString();
-                            if (!map_ip.equals(record_ip))
-                                continue;
+                            DNSRdataAddress answerData = (DNSRdataAddress) answer.getData();
                             
-                            DNSResourceRecord txtRecord = new DNSResourceRecord();
-                            txtRecord.setTtl(100);
-                            txtRecord.setType(DNS.TYPE_EC2);
-                            txtRecord.setName(record.getName());
-                            
-                            DNSRdataString data = new DNSRdataString();
-                            data.setString(map_region + "-" + map_ip);
-                            
-                            txtRecord.setData(data);
-                            
-                            System.out.println("Resolved EC2: " + data);
-                            clientResponse.addAnswer(txtRecord);
+                            // match found, add TXT record //
+                            if (s.isMatch(answerData.getAddress().toString()))
+                            {
+                                DNSResourceRecord txtRecord = new DNSResourceRecord();
+                                txtRecord.setName(answer.getName());
+                                txtRecord.setTtl(DEFAULT_TTL);
+                                
+                                DNSRdataString txt = new DNSRdataString(s.ec2_text + "-" + s.readable_subnet);
+                                txtRecord.setData(txt);
+                                
+                                responseAnswers.add(txtRecord);
+                                break;
+                            }
                         }
                     }
                 }
+                
+                // add resolved CNAMEs to the front of the list //
+                for (DNSResourceRecord cnameRecord : cnameList)
+                    responseAnswers.add(0, cnameRecord);
+                
+                // pop in appropriate authority & additional sections //
+                if (rootAuthorities.isEmpty())
+                    clientResponse.setAuthorities(authList);
+                
+                if (rootAdditional.isEmpty())
+                    clientResponse.setAdditional(addlList);
+                
+                // set answers & questions //
+                clientResponse.setAnswers(responseAnswers);
+                clientResponse.setQuestions(query.getQuestions());
                 
                 return clientResponse;
             }
@@ -302,5 +350,31 @@ public class DNSServer implements AutoCloseable, Runnable
     public void close() throws Exception
     {
         socket.close();
+    }
+    
+    private DNS createDNSRequest()
+    {
+        DNS dns = new DNS();
+        dns.setQuery(true);
+        dns.setOpcode(DNS.OPCODE_STANDARD_QUERY);
+        dns.setTruncated(false);
+        dns.setRecursionDesired(true);
+        dns.setAuthenicated(false);
+        return dns;
+    }
+    
+    private DNS createDNSReply()
+    {
+        DNS dns = new DNS();
+        dns.setQuery(false);
+        dns.setOpcode(DNS.OPCODE_STANDARD_QUERY);
+        dns.setAuthoritative(false);
+        dns.setTruncated(false);
+        dns.setRecursionAvailable(true);
+        dns.setRecursionDesired(true);
+        dns.setAuthenicated(false);
+        dns.setCheckingDisabled(false);
+        dns.setRcode(DNS.RCODE_NO_ERROR);
+        return dns;
     }
 }

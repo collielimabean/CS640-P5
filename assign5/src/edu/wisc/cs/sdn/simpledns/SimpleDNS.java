@@ -29,6 +29,7 @@ public class SimpleDNS
                         System.err.println("Invalid IP Address supplied!");
                         break;
                     }
+	                break;
 	                
 	            case "-e":
 	                if (i + 1 >= args.length)
