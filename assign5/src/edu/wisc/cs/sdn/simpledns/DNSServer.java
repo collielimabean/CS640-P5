@@ -81,7 +81,7 @@ public class DNSServer implements AutoCloseable, Runnable
         {
             try
             {
-                byte[] buffer = new byte[1024];
+                byte[] buffer = new byte[4096];
                 DatagramPacket pkt = new DatagramPacket(buffer, buffer.length);
                 
                 while (true)
@@ -313,9 +313,13 @@ public class DNSServer implements AutoCloseable, Runnable
                 // pop in appropriate authority & additional sections //
                 if (rootAuthorities.isEmpty())
                     clientResponse.setAuthorities(authList);
+                else
+                    clientResponse.setAuthorities(rootAuthorities);
                 
                 if (rootAdditional.isEmpty())
                     clientResponse.setAdditional(addlList);
+                else
+                    clientResponse.setAdditional(rootAdditional);
                 
                 // set answers & questions //
                 clientResponse.setId(query.getId());
@@ -334,7 +338,7 @@ public class DNSServer implements AutoCloseable, Runnable
     {
         this.sendDNSPkt(query, this.rootDNS, DNS_PORT);
         
-        byte[] recv = new byte[1024];
+        byte[] recv = new byte[4096];
         DatagramPacket recvPkt = new DatagramPacket(recv, recv.length);
         socket.receive(recvPkt);
         return DNS.deserialize(recvPkt.getData(), recvPkt.getData().length);
