@@ -8,4 +8,4 @@ clean:
 	rm -rf build
 
 run: clean build
-	cd build && java edu.wisc.cs.sdn.simpledns.SimpleDNS -r 8.8.8.8 -e ../assign5/ec2.csv 
+	cd build && java edu.wisc.cs.sdn.simpledns.SimpleDNS -r 198.41.0.4 -e ../assign5/ec2.csv 
