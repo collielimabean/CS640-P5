@@ -31,19 +31,36 @@ public class DNSServer implements AutoCloseable, Runnable
         public Subnet(String ec2_text, String cidr) throws UnknownHostException
         {
             String[] split = cidr.split("/");
-            byte[] ip_bytes = InetAddress.getByName(split[0]).getAddress();
             this.readable_subnet = split[0];
-            this.subnet = (ip_bytes[0] << 24) | (ip_bytes[1] << 16) | (ip_bytes[2] << 8) | ip_bytes[3];
+            this.subnet = getIPFromString(split[0]);
+            //System.out.println(String.format("subnet: 0x%X, %d\n", this.subnet, subnet));
             this.prefix = Integer.parseInt(split[1]);
             this.ec2_text = ec2_text;
         }
 
         public boolean isMatch(String ip) throws UnknownHostException
         {
-            byte[] ip_bytes = InetAddress.getByName(ip).getAddress();
-            int conv_ip = (ip_bytes[0] << 24) | (ip_bytes[1] << 16) | (ip_bytes[2] << 8) | ip_bytes[3];
+            int conv_ip = getIPFromString(ip);
+            //System.out.println(String.format("convip: 0x%X, %d\n", conv_ip, conv_ip));
+            
             int mask = (~0) << (32 - this.prefix);
+            //System.out.println(String.format("mask: 0x%X, %d\n", mask, mask));
             return (subnet & mask) == (conv_ip & mask);
+        }
+        
+        private int getIPFromString(String ip_str)
+        {
+            int[] ip = new int[4];
+            String[] parts = ip_str.split("\\.");
+
+            int conv = 0;
+            for (int i = 0; i < 4; i++) 
+            {
+                ip[i] = Integer.parseInt(parts[i]);
+                conv |= ip[i] << (24 - (8 * i));
+            }
+            
+            return conv;
         }
     }
     
@@ -290,10 +307,14 @@ public class DNSServer implements AutoCloseable, Runnable
                         for (Subnet s : this.ec2List)
                         {
                             DNSRdataAddress answerData = (DNSRdataAddress) answer.getData();
-                            
+                            String check_ip = answerData.getAddress().toString().replace("/", "");
+                           
                             // match found, add TXT record //
-                            if (s.isMatch(answerData.getAddress().toString().replace("/", "")))
+                            if (s.isMatch(check_ip))
                             {
+                                
+                                System.out.println(String.format("[MATCH] Checking IP address %s against subnet %s with prefix %d", check_ip, s.readable_subnet, s.prefix));
+                                
                                 DNSResourceRecord txtRecord = new DNSResourceRecord();
                                 txtRecord.setType(DNS.TYPE_TXT);
                                 txtRecord.setName(answer.getName());
