@@ -130,17 +130,22 @@ c)
 We find all HTTP requests issued to each CDN node by finding the unique CDNs (by looking for X-Cache in the HTTP response)
 on WebPagetest. We find the following from all requests with X-Cache headers:
 
-IP			Request URL					CDN name		Requests issued
-23.235.46.175		https://js-agent.newrelic.com/nr-918.min.js	Fastly (Amazon S3)	56,
-54.230.53.206		http://code.org					Cloudfront		2-27, 29-39, 41-45, 47-50, 54
+IP		Request URL					CDN name		Requests issued
+23.235.46.175	https://js-agent.newrelic.com/nr-918.min.js	Fastly (Amazon S3)	56,
+54.230.53.206	http://code.org					Cloudfront		3-27, 29-39, 41-45, 47-50, 54
 
 
 As a result, the CDN nodes have the following properties:
 
-Cloudfront: Issued 47 HTTP requests. Requests issued over _<TODO>_ connections.
-Fastly: Issued 1 HTTP request. Requests issued over _<TODO>_ connections.
+Cloudfront: Issued 46 HTTP requests. Requests issued over 6 connections.
+Fastly: Issued 1 HTTP request. Requests issued over 1 connection.
 
 
 
 d)
-<TODO> Look at x-cache hit vs. miss vs. error
+To determine how many requested objects were already stored in the CDN's cache, we look at each CDN's number of hit (as
+given by the X-Cache header). Accordingly, we find: 
+
+Cloudfront: 43 hits, so 43 objects were already stored in the CDN's cache.
+Fastly: 1 hit, so 1 object was already stored in the CDN's cache.
+
