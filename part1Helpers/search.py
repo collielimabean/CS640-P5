@@ -44,7 +44,7 @@ with open(json_file_name, 'r') as json_file:
     data = json.load(json_file)
 
     # get filtered subset
-    filtered = [{'ip_prefix' : d['ip_prefix'], 'service' : d['service']} for d in data['prefixes']]
+    filtered = data['prefixes']
 
     # open and read ip list
     with open(ip_file_name, 'r') as ip_file:
