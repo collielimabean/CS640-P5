@@ -15,9 +15,9 @@ According to WebPagetest,
 b)
 Queries issued by local DNS server for first lookup:
 Assuming we are trying to load "www.code.org", the local DNS server queried:
-- root server with "www.code.org", got "org" name server	(Query 1 below)
-- org server with "www.code.org", got "code.org" name server	(Query 2 below)
-- code.org server with "www.code.org", got "www.code.org"	(Query 3 below)
+- root server with "www.code.org", got "org" name server		(Query 1 below)
+- org server with "www.code.org", got "code.org" name server		(Query 2 below)
+- code.org server with "www.code.org", got "www.code.org" A record	(Query 3 below)
 
 Query 1) 
 Name Server Queried:
@@ -93,32 +93,54 @@ contacts the local DNS server for domain "www.code.org", and since the local DNS
 first lookup, it will simply return the IP address of "www.code.org" to the client without requesting from the 
 "www.code.org" Name Server.
 
----------------------------------
+--------------------------------------------------------------------------------------------------------------------------
 
 Question 2:
 Data from WebPagetest, according to Piazza: https://piazza.com/class/ixxtdlutrc677k?cid=442
 
 a)
 Resolve to EC2:
-To find if a domain name resolves to EC2, we search for a portion of the request's IP in the EC2 list of IPs. If we find a
-possible IP match, we then do a CIDR lookup using the specified prefix to see if the domain's IP is within the IP range
-found via CIDR.
+To find if a domain name resolves to a node in Amazon EC2, we first find all EC2 nodes by using JQ to parse JSON. Then, we
+search for a portion of the request's IP in the EC2 list of IPs. If we find a possible IP match, we then do a CIDR lookup 
+using the specified prefix to see if the domain's IP is within the IP range found via CIDR.
 
 Domain 1) 
 www.code.org
 The IP of www.code.org is 50.17.209.250. There exists an EC2 node with IP 50.16.0.0/15, which translates using CIDR to the
 IP range 50.16.0.0 - 50.17.255.255. 50.17.209.250 lies within this range, so www.code.org resolves to an Amazon EC2 node.
-	
+This node is in the "us-east-1" (Virginia) EC2 region.
+
 
 
 b)
 Resolve to Akamai or EdgeCast CDN:
 To find if a domain name resolves to Akamai/EdgeCast CDN, for each unique IP on WebPagetest, we use bgp.he.net to find the
-IP info for each IP. Then, using this info and the DNS info provided, we look for those IP which belong to Akamai/EdgeCast.
+IP info for each IP. Then, using this IP info and the resultant DNS info returned, we look for those IPs which belong to
+Akamai/EdgeCast.
 
 Domain 1)
 https://cdn.optimizely.com/js/400912536.js
 The IP of this domain is 23.203.150.187. When accessing bgp.he.net, we find that it belongs to Akamia Technologies, Inc.
 and resolves to the url a23-203-150-187.deploy.static.akamaitechnologies.com. Therefore, the domain 
-https://cdn.optimizely.com/js/400912536.js resolves to Akamai or EdgeCast CDN.
+https://cdn.optimizely.com/js/400912536.js resolves to Akamai/EdgeCast CDN.
 
+
+
+c)
+We find all HTTP requests issued to each CDN node by finding the unique CDNs (by looking for X-Cache in the HTTP response)
+on WebPagetest. We find the following from all requests with X-Cache headers:
+
+IP			Request URL					CDN name		Requests issued
+23.235.46.175		https://js-agent.newrelic.com/nr-918.min.js	Fastly (Amazon S3)	56,
+54.230.53.206		http://code.org					Cloudfront		2-27, 29-39, 41-45, 47-50, 54
+
+
+As a result, the CDN nodes have the following properties:
+
+Cloudfront: Issued 47 HTTP requests. Requests issued over _<TODO>_ connections.
+Fastly: Issued 1 HTTP request. Requests issued over _<TODO>_ connections.
+
+
+
+d)
+<TODO> Look at x-cache hit vs. miss vs. error
